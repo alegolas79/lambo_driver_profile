@@ -1,0 +1,142 @@
+---
+title: "t-SNe 03/12/21"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+library(tidyverse)
+library(Rtsne)
+data <- read_csv("confronto.csv")
+```
+
+```{r setup_tsne, include = FALSE}
+df <- data %>%
+  select(c(perc_days, overall_max, overall_mean, avg_daily_max, mean_day_length_r_g, vin))
+df[is.na(df)] <- 0
+df <- df %>% mutate(id = 1:nrow(df))
+
+data_meta <- df %>%
+  select(vin, id)
+
+
+set.seed(12345)
+tSNE_fit <- df %>%
+  select(!c(vin)) %>%
+  column_to_rownames("id") %>% 
+  scale() 
+tSNE_fit <- unique(tSNE_fit)
+
+tSNE_fit <- tSNE_fit%>% 
+  Rtsne(verbose=TRUE)
+
+tSNE_df <- tSNE_fit$Y %>% 
+  as.data.frame() %>%
+  rename(tSNE1="V1",
+         tSNE2="V2") %>%
+  mutate(id=row_number())
+tSNE_df <- tSNE_df %>%
+  inner_join(data_meta, by="id")
+```
+
+Variabili incluse nella t-sne:  
+  
+1. Media delle velocità massime giornaliere
+2. Massimo raggiunto
+3. Velocità media
+4. Media giornaliera del tempo passato in auto
+5. Percentuale di giorni in cui l'auto è stata usata rispetto alle date possibili a partire dalla prima osservazione
+
+```{r tsne, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+tSNE_df %>%
+  ggplot(aes(x = tSNE1, 
+             y = tSNE2
+  ))+
+  geom_point(size=10)+
+  theme(legend.position="bottom")+
+  theme_light()+
+  theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background = element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"), legend.position = "none")
+
+```
+t-SNE  
+
+```{r setup_tsne_2, include = FALSE}
+tSNE_df <- tSNE_df %>% left_join(df)
+```
+
+```{r tsne_perc, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+tSNE_df %>%
+  ggplot(aes(x = tSNE1, 
+             y = tSNE2,
+             color=perc_days
+  ))+
+  geom_point(size=10)+
+  labs(color = "Percentage of days car used")+
+  theme(legend.position="bottom")+
+  theme_light()+
+  theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background = element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+
+```
+t-SNE. I colori rappresentano la percentuale di giorni in cui l'auto è stata usata rispetto alle date possibili a partire dalla prima osservazione  
+
+```{r tsne_overall_max, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+tSNE_df %>%
+  ggplot(aes(x = tSNE1, 
+             y = tSNE2,
+             color=overall_max
+  ))+
+  geom_point(size=10)+
+  labs(color = "Maximum speed")+
+  theme(legend.position="bottom")+
+  theme_light()+
+  theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background = element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+
+```
+I colori rappresentano la velocità massima mai raggiunta dall'auto. 
+  
+```{r tsne_average_speed, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+tSNE_df %>%
+  ggplot(aes(x = tSNE1, 
+             y = tSNE2,
+             color=overall_mean
+  ))+
+  geom_point(size=10)+
+  labs(color = "Average speed")+
+  theme(legend.position="bottom")+
+  theme_light()+
+  theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background = element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+
+```
+I colori rappresentano la velocità media della vettura.  
+  
+```{r tsne_average_daily_speed, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+tSNE_df %>%
+  ggplot(aes(x = tSNE1, 
+             y = tSNE2,
+             color=avg_daily_max
+  ))+
+  geom_point(size=10)+
+  labs(color = "Average daily maximum speed")+
+  theme(legend.position="bottom")+
+  theme_light()+
+  theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background = element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+
+```
+I colori rappresentano la media delle velocità massime giornaliere dell'auto.  
+  
+```{r tsne_length, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+tSNE_df %>%
+  ggplot(aes(x = tSNE1, 
+             y = tSNE2,
+             color=mean_day_length_r_g
+  ))+
+  geom_point(size=10)+
+  labs(color = "Average time spent using car daily")+
+  theme(legend.position="bottom")+
+  theme_light()+
+  theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background = element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+
+```
+I colori rappresentano la media giornaliera delle serie. 
+  
