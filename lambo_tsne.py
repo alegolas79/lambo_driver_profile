@@ -21,7 +21,11 @@ def preprocess_data(df: pd.DataFrame):
     df.dropna(inplace=True, subset=['time'])
 
     # set datetime time and sort
-    df['time'] = df['time'].astype('datetime64[ns]')
+    try:
+        df['time'] = df['time'].astype('datetime64[ns]')
+    except Exception as e:
+        print('An exception occurred: {}'.format(e))
+        return
     df.sort_values(by='time', inplace=True, ignore_index=True)
 
     df.fillna(method='ffill', inplace=True)

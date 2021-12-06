@@ -30,6 +30,8 @@ def main():
 
             # *** data cleaning, filling, setup ***
             df = preprocess_data(df)
+            if df is None:
+                continue
 
             # *** data cleaning, filling, setup + find interesting series ***
 
