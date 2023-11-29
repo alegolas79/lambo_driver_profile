@@ -1,0 +1,364 @@
+---
+title: "clustering 07/12/21"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+library(tidyverse)
+library(factoextra)
+library(ggfortify)
+library(GGally)
+library(readxl)
+library(dbscan)
+library(fpc)
+
+data <- read_csv("confronto_km.csv")
+VIN_di_TEST <- read_excel("C:/Users/l.dorsa/Downloads/BIG DATA 11-29-2021/VIN di TEST.xlsx")
+VIN_di_TEST <- VIN_di_TEST %>% mutate(test = "test") %>% select(`VIN TEST`, test)
+
+colnames(VIN_di_TEST)[1] <- "vin"
+data <- data %>%
+  left_join(VIN_di_TEST)
+data <- data %>%
+  mutate(test = ifelse(is.na(test), "not test", test))
+
+rm(VIN_di_TEST)
+```
+
+
+```{r setup_clusters, include = FALSE}
+df <- data %>%
+  filter(test=="not test")%>%
+  select(c(perc_days, tot_days, overall_mean, avg_daily_max, mean_day_length_g, km_percorsi, vin))
+
+df <- df %>% filter(tot_days > 3) %>% select(!tot_days)
+
+df[is.na(df)] <- 0
+
+df <- df %>% mutate(id = 1:nrow(df))
+
+data_meta <- df %>%
+  select(vin, id)
+
+df_cluster <- df %>%
+  select(!c(vin)) %>%
+  column_to_rownames("id") %>% 
+  scale() 
+
+```
+
+```{r optimal clusters, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+fviz_nbclust(df_cluster, FUNcluster = kmeans, method = "wss")+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+
+```
+
+```{r optimal clusters2, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+fviz_nbclust(df_cluster, FUNcluster = kmeans, method = "silhouette")+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))
+
+```
+
+```{r optimal clusters3, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+fviz_nbclust(df_cluster, FUNcluster = kmeans, method = "gap_stat", print.summary =FALSE)+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))+
+geom_vline(xintercept = 2, linetype = 2, colour = "white")
+
+```
+
+```{r clusters5, include = FALSE}
+set.seed(1234)
+km.res5 <- kmeans(df_cluster, 5, nstart = 25)
+clusters5 <- km.res5$cluster
+vin_clusters5 <- as.data.frame(table(clusters5, data_meta$vin))
+vin_clusters5 <- vin_clusters5 %>% filter(Freq==1)%>%select(!Freq)
+colnames(vin_clusters5)[2] <- "vin"
+vin_clusters5 <- vin_clusters5 %>% left_join(df)
+
+
+
+```
+
+```{r cluster_plot5, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+autoplot(km.res5, df_cluster, frame = TRUE)+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+  
+
+
+```
+```{r cluster_plot_country, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+#Clustering con in evidenza la provenienza delle auto 
+
+# Dimension reduction using PCA
+res.pca <- prcomp(df_cluster,  scale = TRUE)
+# Coordinates of individuals
+ind.coord <- as.data.frame(get_pca_ind(res.pca)$coord)
+# Add clusters obtained using the K-means algorithm
+ind.coord$cluster <- factor(km.res5$cluster)
+
+df_cluster <- as.data.frame(df_cluster) %>%
+    mutate(id=row_number())
+df1 <- df %>% select(vin, id)
+df_cluster <- df_cluster %>%
+  left_join(df1)
+
+
+# Add countries
+ind.coord$country <- df_cluster$country
+ind.coord$continent <- str_remove(ind.coord$country, "/.*")
+library(ggpubr)
+
+
+eigenvalue <- round(get_eigenvalue(res.pca), 1)
+variance.percent <- eigenvalue$variance.percent
+
+ggscatter(
+  ind.coord, x = "Dim.1", y = "Dim.2", 
+  color = "cluster",  ellipse = TRUE, ellipse.type = "convex",
+  shape = "continent", size = 3,  legend = "right", ggtheme = theme_light(),
+  xlab = paste0("Dim 1 (", variance.percent[1], "% )" ),
+  ylab = paste0("Dim 2 (", variance.percent[2], "% )" )
+) +
+  stat_mean(aes(color = cluster), size = 1)+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+  
+```
+
+```{r cluster_plot8, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(1235)
+km.res5 <- kmeans(df_cluster, 5, nstart = 100)
+clusters5 <- km.res5$cluster
+vin_clusters5 <- as.data.frame(table(clusters5, data_meta$vin))
+vin_clusters5 <- vin_clusters5 %>% filter(Freq==1)%>%select(!Freq)
+colnames(vin_clusters5)[2] <- "vin"
+vin_clusters5 <- vin_clusters5 %>% left_join(df)
+
+autoplot(km.res5, df_cluster, frame = TRUE)+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+  
+
+
+```
+
+```{r variable_plot5, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+vin_clusters5 <- vin_clusters5 %>%
+  mutate(mean_day_length_g = mean_day_length_g/3600)
+ggpairs(vin_clusters5[-c(1,2,8)], 
+  columnLabels = c("Percentage of days car was used", "Average speed", "Average daily maximum speed","Average time spent driving in a day (hours)", "Total kilometers travelled"), aes(color =vin_clusters5$clusters))+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 12, face = "bold"),
+        strip.text.y = element_text(size = 12, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+```
+
+```{r zoom_plot5, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+
+vin_clusters5 %>%
+ggplot(aes(x = perc_days, y=avg_daily_max ,color =clusters5))+
+  geom_point(size=5)+
+  xlab("Percentage of days car was used")+
+  ylab("Average daily maximum speed")+
+  theme_light()+
+  labs(color = "cluster")+
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 12, face = "bold"),
+        strip.text.y = element_text(size = 12, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+```
+
+```{r zoom_plot2, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+
+vin_clusters5 %>%
+ggplot(aes(x = mean_day_length_g/3600, y=km_percorsi ,color =clusters5))+
+  geom_point(size=5)+
+  xlab("Average time spent driving in a day (hours)")+
+  ylab("Total kilometers travelled")+
+  theme_light()+
+  labs(color = "cluster")+
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 12, face = "bold"),
+        strip.text.y = element_text(size = 12, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+```
+
+```{r setup_paesi, include = FALSE}
+
+data <- read_csv("confronto_km.csv")
+VIN_di_TEST <- read_excel("C:/Users/l.dorsa/Downloads/BIG DATA 11-29-2021/VIN di TEST.xlsx")
+VIN_di_TEST <- VIN_di_TEST %>% mutate(test = "test") %>% select(`VIN TEST`, test)
+colnames(VIN_di_TEST)[1] <- "vin"
+data <- data %>%
+  left_join(VIN_di_TEST)
+data <- data %>%
+  mutate(test = ifelse(is.na(test), "not test", test))
+rm(VIN_di_TEST)
+
+country <- read_csv("country2.csv")
+data <- data %>%
+  left_join(country)
+data$continent <- data$country
+data$continent <- str_remove(data$continent, "/.*")
+
+df_europe <- data %>%
+  filter(test=="not test")%>%
+  filter(continent=="Europe")%>%
+  select(c(perc_days, tot_days, overall_mean, avg_daily_max, mean_day_length_g, km_percorsi, vin))
+df_europe <- df_europe %>% filter(tot_days > 3) %>% select(!tot_days)
+df_europe[is.na(df_europe)] <- 0
+df_europe <- df_europe %>% mutate(id = 1:nrow(df_europe))
+data_meta_europe <- df_europe %>%
+  select(vin, id)
+df_cluster_europe <- df_europe %>%
+  select(!c(vin)) %>%
+  column_to_rownames("id") %>% 
+  scale() 
+
+df_america <- data %>%
+  filter(test=="not test")%>%
+  filter(continent=="America")%>%
+  select(c(perc_days, tot_days, overall_mean, avg_daily_max, mean_day_length_g, km_percorsi, vin))
+df_america <- df_america %>% filter(tot_days > 3) %>% select(!tot_days)
+df_america[is.na(df_america)] <- 0
+df_america <- df_america %>% mutate(id = 1:nrow(df_america))
+data_meta_america <- df_america %>%
+  select(vin, id)
+df_cluster_america <- df_america %>%
+  select(!c(vin)) %>%
+  column_to_rownames("id") %>% 
+  scale() 
+```
+
+```{r cluster_plot_europe, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+
+set.seed(1234)
+km.res_europe <- kmeans(df_cluster_europe, 5, nstart = 25)
+clusters_europe <- km.res_europe$cluster
+vin_clusters_europe <- as.data.frame(table(clusters_europe, data_meta_europe$vin))
+vin_clusters_europe  <- vin_clusters_europe  %>% filter(Freq==1)%>%select(!Freq)
+colnames(vin_clusters_europe )[2] <- "vin"
+vin_clusters_europe  <- vin_clusters_europe  %>% left_join(df_europe)
+
+autoplot(km.res_europe, df_cluster_europe, frame = TRUE)+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+```
+```{r variable_plot_europe, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+vin_clusters_europe <- vin_clusters_europe %>%
+  mutate(mean_day_length_g = mean_day_length_g/3600)
+ggpairs(vin_clusters_europe[-c(1,2,8)], 
+  columnLabels = c("Percentage of days car was used", "Average speed", "Average daily maximum speed","Average time spent driving in a day (hours)", "Total kilometers travelled"), aes(color =vin_clusters_europe$clusters))+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 12, face = "bold"),
+        strip.text.y = element_text(size = 12, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+```
+```{r cluster_plot_america, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+
+set.seed(1234)
+km.res_america <- kmeans(df_cluster_america, 5, nstart = 25)
+clusters_america <- km.res_america$cluster
+vin_clusters_america <- as.data.frame(table(clusters_america, data_meta_america$vin))
+vin_clusters_america  <- vin_clusters_america  %>% filter(Freq==1)%>%select(!Freq)
+colnames(vin_clusters_america)[2] <- "vin"
+vin_clusters_america  <- vin_clusters_america  %>% left_join(df_america)
+
+autoplot(km.res_america, df_cluster_america, frame = TRUE)+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+  
+
+
+```
+
+```{r variable_plot_america, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+vin_clusters_america <- vin_clusters_america %>%
+  mutate(mean_day_length_g = mean_day_length_g/3600)
+ggpairs(vin_clusters_america[-c(1,2,8)], 
+  columnLabels = c("Percentage of days car was used", "Average speed", "Average daily maximum speed","Average time spent driving in a day (hours)", "Total kilometers travelled"), aes(color =vin_clusters_america$clusters))+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 12, face = "bold"),
+        strip.text.y = element_text(size = 12, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+```
