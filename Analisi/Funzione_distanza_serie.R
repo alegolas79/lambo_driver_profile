@@ -104,12 +104,13 @@ do.call(rbind, stop_2h)
 stop_2h <- do.call(rbind.data.frame, stop_2h)
 
 #write_csv(stop_2h, "stop_2h.csv")
-#stop <- read_csv("stop.csv")
+#stop <- read_csv("stop_2h.csv")
 cluster_green <- read_csv("C:/Users/l.dorsa/Desktop/Lambo/cluster_green.csv")
 country2 <- read_csv("C:/Users/l.dorsa/Desktop/Lambo/country2.csv")
-
+stop <- stop %>%
+  select(vin, avg_stop_length)
 cluster_green <- cluster_green %>%
-  left_join(stop_2h)%>%
+  left_join(stop)%>%
   left_join(country2)
 cluster_green$continent <- str_remove(cluster_green$country, "/.*")
 
@@ -120,7 +121,13 @@ cluster_green %>%
   theme_light()+
   xlab("Cluster")+
   ylab("Average length of time between series (hours)")+
-  stat_summary(geom="text", fun.y=quantile,
+  stat_summary(geom="text", fun.y=median,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=min,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=max,
                aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
                position=position_nudge(x=0.5), size=5)+
   theme(axis.text.x = element_text(face="bold", 
@@ -143,7 +150,13 @@ cluster_green %>%
   theme_light()+
   xlab("Cluster")+
   ylab("Average km travelled in a day")+
-  stat_summary(geom="text", fun.y=quantile,
+  stat_summary(geom="text", fun.y=median,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=min,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=max,
                aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
                position=position_nudge(x=0.5), size=5)+
   theme(axis.text.x = element_text(face="bold", 
@@ -170,7 +183,13 @@ cluster_green %>%
   theme_light()+
   xlab("Cluster")+
   ylab("Average time spent travelling in a day (hours)")+
-  stat_summary(geom="text", fun.y=quantile,
+  stat_summary(geom="text", fun.y=median,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=min,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=max,
                aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
                position=position_nudge(x=0.5), size=5)+
   theme(axis.text.x = element_text(face="bold", 
@@ -190,7 +209,13 @@ cluster_green %>%
   theme_light()+
   xlab("Cluster")+
   ylab("Average series length (minutes)")+
-  stat_summary(geom="text", fun.y=quantile,
+  stat_summary(geom="text", fun.y=median,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=min,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=max,
                aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
                position=position_nudge(x=0.5), size=5)+
   theme(axis.text.x = element_text(face="bold", 
@@ -225,7 +250,13 @@ length_2h %>%
   theme_light()+
   xlab("Cluster")+
   ylab("Average series length (hours)")+
-  stat_summary(geom="text", fun.y=quantile,
+  stat_summary(geom="text", fun.y=median,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=min,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=max,
                aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
                position=position_nudge(x=0.5), size=5)+
   theme(axis.text.x = element_text(face="bold", 

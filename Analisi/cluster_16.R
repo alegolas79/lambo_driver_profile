@@ -1,11 +1,33 @@
-cluster <- read_csv("cluster1612.csv")
+stop_2h <- read_csv("stop_2h.csv")
+length_2h <- read_csv("length_2h.csv")
+km_series2 <- read_csv("km_series2.csv")
+cluster_green <- read_csv("cluster_green.csv")
+cluster_green <- cluster_green %>%
+  select(clusters5, vin)
+stop_2h <- stop_2h %>%
+  select(avg_stop_length, vin)
+km_series2 <- km_series2 %>%
+  select(avg_km_series, vin)
+
+cluster <- stop_2h %>%
+  left_join(cluster_green)%>%
+  left_join(km_series2)%>%
+  left_join(length_2h)
+
 cluster %>%
-  ggplot(aes(clusters5, avg_daily_km, color = as.factor(clusters5)))+
+  filter(!is.na(clusters5))%>%
+  ggplot(aes(clusters5, avg_km_s, color = as.factor(clusters5)))+
   geom_boxplot(lwd = 1)+
   theme_light()+
   xlab("Cluster")+
   ylab("Average daily km")+
-  stat_summary(geom="text", fun.y=quantile,
+  stat_summary(geom="text", fun.y=median,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=min,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=max,
                aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
                position=position_nudge(x=0.5), size=5)+
   theme(axis.text.x = element_text(face="bold", 
@@ -25,7 +47,13 @@ cluster %>%
   theme_light()+
   xlab("Cluster")+
   ylab("Average length of drive (hours)")+
-  stat_summary(geom="text", fun.y=quantile,
+  stat_summary(geom="text", fun.y=median,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=min,
+               aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
+               position=position_nudge(x=0.5), size=5)+
+  stat_summary(geom="text", fun.y=max,
                aes(label=sprintf("%1.1f", ..y..), color=factor(clusters5)),
                position=position_nudge(x=0.5), size=5)+
   theme(axis.text.x = element_text(face="bold", 

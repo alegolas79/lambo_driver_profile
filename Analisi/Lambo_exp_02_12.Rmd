@@ -1,0 +1,545 @@
+---
+title: "weETUYWqZWYtU Exploration v1"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(hms)
+library(rworldmap)
+library(data.table)
+library(lutz)
+library(RColorBrewer)
+df <- fread("C:/Users/l.dorsa/Desktop/Lambo/Lambo_complete/ZHWET4ZF9LLA14665.csv", select = c("time","latitude","longitude","altitude","speed"))
+```
+
+
+
+```{r setup_zeroes, include=FALSE}
+#Aggiung zeri alla velocità nei periodi mancanti
+add_zeroes <- function(df) { 
+  df <- df %>%
+  mutate(speed = ifelse(is.na(speed), 0, speed))
+df1 <- df %>% dplyr::select(time, speed) %>%
+  filter(!is.na(speed))
+
+
+#Ordino secondo data e orario e creo una variabile che indichi la velocità nella riga precedente
+df1 <- df1[order(df1$time),]
+df1$speed_pre <- lag(df1$speed, 1)
+
+#Sulla base della variabile creata, confrontata con velocità, indico momenti di inizio e fine serie
+df1 <- df1 %>%  mutate(series = ifelse(speed>0 & speed_pre==0, "start",
+                                       ifelse(speed==0 & speed_pre >0, "stop",NA)))
+
+#Riempio la variabile serie e trovo i punti che fanno parte di serie
+#Se il punto successivo è più distante di 60 secondi lo segno
+df1 <- df1 %>%
+  mutate(series2 = series)%>%
+  fill(series2, .direction = "down")
+df1$time_succ <- lead(df1$time, 1)
+df1$series3 <- lead(df1$series2, 1)
+df1 <- df1 %>%
+  mutate(flag = ifelse(series2=="start" & 
+                         (time_succ - time)>=60,
+                       1,
+                       0
+  ))
+
+#Raccolgo i punti individuati prima
+df1 <- df1 %>% 
+  filter(flag==1)
+#Creo delle righe a 1s di distanza dai punti individuati sopra con velocità zero
+df1 <- df1 %>%
+  select(speed, time)%>%
+  mutate(speed=0, time = time+1, latitude = NA, longitude = NA, altitude = NA)
+df1 <- df1[,c(2,3,4,5,1)]
+
+#Unisco al dataset originale
+df <- df %>%
+  rbind(df1)
+df <- df[order(df$time),]
+}
+df <- add_zeroes(df)
+```
+### Logiche di analisi da indagare:  
+Durata guida  
+Frequenza uso auto   
+Velocità media di guida  
+Distanza geografica  
+
+```{r setup_velocità, include = FALSE}
+df_speed <- df %>% 
+  filter(speed>0) %>%
+  mutate(mean_speed = mean(speed), max_speed = max(speed), sd_speed = sd(speed))
+df_speed <- df_speed[1,]
+  
+```
+##  Frequenza uso auto  
+Divisa per mese
+
+In rosso, le serie divise dalle altre da almeno 15 minuti in cui la velocità massima non supera la velocità media complessiva del veicolo. 
+
+
+```{r setup_finestre_new, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}  
+setup_start_stop <- function(df, x, y) {
+  
+  df <- df %>% mutate(id = 1:nrow(df))
+  
+  #Seleziono solo orario con timezone CET e velocità, tengo solo valori con speed diverso da NA
+  df <- df %>%
+    mutate(speed = ifelse(is.na(speed), 0, speed))
+  df1 <- df %>% dplyr::select(time, speed, id) %>%
+    filter(!is.na(speed))
+  
+  
+  #Ordino secondo data e orario e creo una variabile che indichi la velocità nella riga precedente
+  df1 <- df1[order(df1$time),]
+  df1$speed_pre <- lag(df1$speed, 1)
+  
+  #Sulla base della variabile creata, confrontata con velocità, indico momenti di inizio e fine serie
+  df1 <- df1 %>%  mutate(series = ifelse(speed>0 & speed_pre==0, "start",
+                                         ifelse(speed==0 & speed_pre >0, "stop",
+                                                NA)))
+  #Seleziono solo momenti di inizio e fine serie
+  df1 <- df1 %>% filter(!is.na(series))
+  
+  #Creo variabile che dia l'orario della riga precedente
+  df1$time_stop_pred <- lag(df1$time, 1)
+  
+  
+  #Trovo la lunghezza dello stop antecedente a start, solo per le variabili start
+  df1$length_stop_pred <- ifelse(df1$series=="start", df1$time - df1$time_stop_pred, NA)
+  
+  #Trovo lunghezza dello stop successivo a stop
+  df1$time_start_next <- lead(df1$time)
+  df1$length_stop_next <- ifelse(df1$series=="stop", (df1$time_start_next - df1$time), NA)
+  
+  df1 <- df1[order(df1$time),]
+  
+  
+  #Seleziono start e stop sulla base del parametro di tempo, in modo che le serie attaccate tra di loro risultino come la stessa serie
+  df1 <- df1 %>% filter(ifelse(series=="start", length_stop_pred >= x, length_stop_next>=x))
+  
+  #Genero ID di inizio serie per gli start, metto "stop" per gli stop  
+  df1$id_series <- ifelse(df1$series == "start", 1:nrow(df1), "stop") 
+  
+  #Unisco le info sugli start al file generale
+  df1 <- df1 %>% select(time, speed, series,id_series, id)
+  df <- df %>% left_join(df1)
+  df <- df[order(df$time),]  
+  #Riempio le id
+  df <-df %>%
+    fill(id_series, .direction = "down")
+  
+  #Trasformo le id stop in NA, poi calcolo la velocità massima raggiunta nel corso della serie ignorando gli NA
+  df <- df %>%
+    mutate(id_series = ifelse(id_series == "stop", NA, id_series))%>%
+    group_by(id_series)%>%
+    mutate(max_series = max(speed, na.rm = TRUE))%>%
+    mutate(max_series = ifelse(is.na(id_series), 0, max_series))
+  
+  #Sulla base della velocità massima serie confrontata con parametro velocità creo variabile che indichi se il periodo ci è interessante o no 
+  df <- df %>%
+    ungroup()%>%
+    mutate(col = ifelse(
+      max_series <= y, "Red", "Green"))
+}
+#---------------------------------------------------------------------------------------
+#Parametri
+#x = tempo che deve intercorrere tra due velocità perchè siano considerate serie separate espresso in secondi
+x <- 300
+#y = velocità sotto la quale la serie non è considerata di interesse
+y <- (df_speed$mean_speed + df_speed$sd_speed)
+#---------------------------------------------------------------------------------------
+#Chiamare Series_functions
+df <- setup_start_stop(df, x, y)
+#---------------------------------------------------------------------------------------
+
+```
+
+```{r Feb, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  mutate(month=month(time), day = day(time), hour = as_hms(time))%>%
+  filter(month==2)%>%
+  mutate(speed = ifelse(is.na(speed), 0, speed))%>%
+  ggplot(aes(hour, speed))+
+  geom_line()+
+  facet_grid(vars(day))+
+  xlab("February")+
+  theme_light()+
+  geom_tile(aes(fill= col, x = hour, y = 150), height = 300,alpha = 7/100, width = 10)+
+  scale_fill_manual("Period of interest for analysis", values = c("green", "red"))
+
+```
+
+```{r Mar, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  mutate(month=month(time), day = day(time), hour = as_hms(time))%>%
+  filter(month==3)%>%
+  mutate(speed = ifelse(is.na(speed), 0, speed))%>%
+  ggplot(aes(hour, speed))+
+  geom_line()+
+  facet_grid(vars(day))+
+  xlab("March")+
+  theme_light()+
+  geom_tile(aes(fill= col, x = hour, y = 150), height = 300,alpha = 7/100, width = 10)+
+  scale_fill_manual("Period of interest for analysis", values = c("green", "red"))
+
+```
+
+```{r Ap, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  mutate(month=month(time), day = day(time), hour = as_hms(time))%>%
+  filter(month==4)%>%
+  ggplot(aes(hour, speed))+
+  geom_line()+
+  facet_grid(vars(day))+
+  xlab("April")+
+  theme_light()+
+  geom_tile(aes(fill= col, x = hour, y = 150), height = 300,alpha = 7/100, width = 10)+
+  scale_fill_manual("Period of interest for analysis", values = c("green", "red"))
+
+```
+
+```{r May, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  mutate(month=month(time), day = day(time), hour = as_hms(time))%>%
+  filter(month==5)%>%
+  mutate(speed = ifelse(is.na(speed), 0, speed))%>%
+  ggplot(aes(hour, speed))+
+  geom_line()+
+  facet_grid(vars(day))+
+  xlab("May")+
+  theme_light()+
+  geom_tile(aes(fill= col, x = hour, y = 150), height = 300,alpha = 7/100, width = 10)+
+  scale_fill_manual("Period of interest for analysis", values = c("green", "red"))
+
+```
+
+```{r Jun, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  mutate(month=month(time), day = day(time), hour = as_hms(time))%>%
+  filter(month==6)%>%
+  mutate(speed = ifelse(is.na(speed), 0, speed))%>%
+  ggplot(aes(hour, speed))+
+  geom_line()+
+  facet_grid(vars(day))+
+  xlab("June")+
+  theme_light()+
+  geom_tile(aes(fill= col, x = hour, y = 150), height = 300,alpha = 7/100, width = 10)+
+  scale_fill_manual("Period of interest for analysis", values = c("green", "red"))
+
+```
+
+```{r Jul, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  mutate(month=month(time), day = day(time), hour = as_hms(time))%>%
+  filter(hour>as_hms("12:00:00"))%>%
+  filter(month==7)%>%
+  filter(day==14)%>%
+  mutate(speed = ifelse(is.na(speed), 0, speed))%>%
+  ggplot(aes(hour, speed))+
+  geom_line()+
+  #facet_grid(vars(day))+
+  xlab("time")+
+  theme_light()+
+  geom_tile(aes(fill= col, x = hour, y = 150), height = 300,alpha = 7/100, width = 10)+
+  scale_fill_manual("Period of interest for analysis", values = c("green", "red"))+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))+ theme(legend.position = "none")
+
+```
+
+```{r Aug, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  mutate(month=month(time), day = day(time), hour = as_hms(time))%>%
+  filter(month==8)%>%
+  filter(day==15)%>%
+  filter(hour>as_hms("12:00:00"))%>%
+  mutate(speed = ifelse(is.na(speed), 0, speed))%>%
+  ggplot(aes(hour, speed))+
+  geom_line()+
+  #facet_grid(vars(day))+
+  xlab("")+
+  theme_classic()+
+ # geom_tile(aes(fill= col, x = hour, y = 100), height = 200,alpha = 7/100, width = 10)+
+  #scale_fill_manual("Period of interest for analysis", values = c("green", "red"))+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(
+                           size=9),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 10, face = "bold"),
+        strip.text.y = element_text(size = 10, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"), strip.text.y = element_text(angle = 360))+ theme(legend.position = "none")
+
+```
+
+```{r Sept, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  mutate(month=month(time), day = day(time), hour = as_hms(time))%>%
+  filter(month==9)%>%
+  mutate(speed = ifelse(is.na(speed), 0, speed))%>%
+  ggplot(aes(hour, speed))+
+  geom_line()+
+  facet_grid(vars(day))+
+  xlab("September")+
+  theme_light()+
+  geom_tile(aes(fill= col, x = hour, y = 150), height = 300,alpha = 7/100, width = 10)+
+  scale_fill_manual("Period of interest for analysis", values = c("green", "red"))
+
+```
+
+```{r Oct, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  mutate(month=month(time), day = day(time), hour = as_hms(time))%>%
+  filter(month==10)%>%
+  mutate(speed = ifelse(is.na(speed), 0, speed))%>%
+  ggplot(aes(hour, speed))+
+  geom_line()+
+  facet_grid(vars(day))+
+  xlab("October")+
+  theme_light()+
+  geom_tile(aes(fill= col, x = hour, y = 150), height = 300,alpha = 7/100, width = 10)+
+  scale_fill_manual("Period of interest for analysis", values = c("green", "red"))
+
+```
+
+```{r Nov, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  mutate(month=month(time), day = day(time), hour = as_hms(time))%>%
+  filter(month==11)%>%
+  mutate(speed = ifelse(is.na(speed), 0, speed))%>%
+  ggplot(aes(hour, speed))+
+  geom_line()+
+  facet_grid(vars(day))+
+  xlab("November")+
+  theme_light()+
+  geom_tile(aes(fill= col, x = hour, y = 150), height = 300,alpha = 7/100, width = 10)+
+  scale_fill_manual("Period of interest for analysis", values = c("green", "red"))
+
+```
+
+### Durata guida  
+```{r drive_length_setup, include = FALSE}
+drive_length <- function(df) {
+  
+  df1 <- df %>%
+    select(id_series, time, col, series)
+  
+  df1 <- df1 %>%
+    filter(!is.na(series))
+  
+  df1 <- df1[order(df1$time),]
+  
+  df1 <- df1 %>%
+    #Creo il tempo dell'osservazione precedente
+    mutate(time_start = lag(time)) %>% 
+    #Filtro le durate di guida poco credibili
+    filter((day(time) <= (day(time_start) + 1)))
+  
+  df1 <- df1%>%
+    #Creo la durata della serie, uguale alla differenza tra il tempo dello start precendente e il  tempo dello stop
+    mutate(drive_length = ifelse(series=="stop", (time - time_start), NA))%>%
+    #Creo variabili che indicano il giorno e il mese dello start
+    mutate(day_start = day(time_start), month_start = month(time_start))%>%
+    #Creo variabile che indica il giorno della settimana 
+    mutate(weekday_start = weekdays(time_start))
+  
+#La colonna serie risulta rossa per tutti gli stop, la trasformo a seconda del colore dello start 
+  df1 <- df1%>%
+    mutate(col = ifelse(series=="stop", NA, col))
+  df1 <- df1 %>% 
+    fill(col, .direction = "down")%>% 
+    fill(id_series, .direction = "down")
+  
+  #Trasformo i giorni della settimana in fattori così che abbiano l'ordine giusto
+  
+}
+
+df1 <- drive_length(df)
+df1$weekday_start <- factor(df1$weekday_start, levels=c('lunedì','martedì','mercoledì' ,'giovedì',
+                                                          'venerdì', 'sabato', 'domenica'))
+
+```
+
+Durata sessioni di guida.
+```{r drive_length, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df1 %>%
+  dplyr::filter(drive_length<86400)%>%
+  ggplot(aes(drive_length/3600, fill=col))+
+  geom_histogram(binwidth = 0.1)+
+  theme_light()+
+  scale_fill_manual(values = c("#29a329", "#990000"), labels = c("Yes", "No"))+
+  labs(fill = "Series of interest for analysis:")+
+  ylab("")+
+  xlab("Drive length (hours)")
+
+```
+
+
+Durata sessioni di guida divise per giorni nella settimana.
+```{r drive_length_weekday, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df1 %>%
+  filter(drive_length<86400)%>%
+  ggplot(aes(drive_length/3600, fill=col))+
+  geom_histogram(binwidth = 0.1)+
+  theme_light()+
+  scale_fill_manual(values = c("#29a329", "#990000"), labels = c("Yes", "No"))+
+  labs(fill = "Series of interest for analysis:")+
+  ylab("")+
+  xlab("Drive length (hours)")+
+  facet_wrap(vars(weekday_start))
+```
+
+```{r drive_length_setup2, include = FALSE}
+#Call Duration_functions
+
+total_drive_length <- function(df1) {
+  df2 <- df1 %>%
+    #Qui calcolo i minuti che sono passati dalla mezzanotte al momento dello start
+    mutate(secs_from_midnight = ifelse(day(time)!= day(time_start), as_hms(time), 0)) %>%
+    #Creo una variabile che indichi la guida meno i secondi passati dalla mezzanotte
+    mutate(drive_length_start = drive_length - secs_from_midnight) %>%
+    #Creo una variabile che indichi la data senza indicare il tempo
+    mutate(date = date(time_start))
+  
+  #Per aggiungere i secondi passati dalla mezzanotte al conteggio della durata di guida del giorno dopo, creo un altro dateset
+  df3 <- df2 %>% 
+    ungroup()%>%
+    #Seleziono solo i casi dove si è guidato da prima a dopo la mezzanotte
+    filter(secs_from_midnight>0)
+  
+  df3 <- df3 %>%
+    #Modifico la data in quella del giorno dopo 
+    mutate(date = date + 1) %>%
+    #Metto la durata di guida uguale al tempo trascorso dalla mezzanotte in poi
+    mutate(drive_length_start = secs_from_midnight)%>%
+    #Metto i secondi passati dalla mezzanotte uguali a zero
+    mutate(secs_from_midnight = 0)%>%
+    #Modifico giorni della settimana e date secondo la data del giorno successivo 
+    mutate(weekday_start = weekdays(date))%>%
+    mutate(day_start = day(date), month_start = month(date))
+  
+  #Riunisco i dataset
+  df2 <- df2 %>%
+    rbind(df3)
+  
+  df2 <- df2 %>%
+    #Raggruppo per giorno e mese
+    group_by(month_start, day_start)%>%
+    #Calcolo il tempo di guida giornaliero
+    mutate(total_drive_start = sum(drive_length_start))
+  
+  df2 <- df2 %>%
+    select(day_start, month_start, weekday_start, total_drive_start, date)
+  
+  #Tengo solo le osservazioni uniche 
+  df2 <- base::unique(df2)
+  
+}
+#Trova la durata del tempo passato in auto in un giorno (comprese serie rosse)
+df2 <- total_drive_length(df1)
+```
+
+Tempo totale passato in auto per data. I colori indicano il giorno della settimana. 
+Include sia il tempo considerato valido per l'analisi che quello considerato non valido. 
+```{r daily_length_full, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df2 %>%
+  ggplot(aes(date, total_drive_start/3600, fill=weekday_start))+
+  geom_col()+
+  scale_fill_brewer(palette = "Spectral")+
+  theme_light()+
+  xlab("")+
+  ylab("Total time spent driving by day (hours)")+
+  labs(fill="Day of the week:")
+```
+
+```{r drive_length_setup3, include = FALSE}
+#Call Duration_functions
+
+#Giorni della settimana calcolati secondo timezone ita -> avrebbe più senso basarli su timezone locale?
+
+
+#Parametri per l'eliminazione di serie
+x <- mean(df1$drive_length, na.rm = TRUE)
+y <- sd(df1$drive_length, na.rm = TRUE)
+z <- x + (3*y)
+#Trova la durata del tempo passato in auto in un giorno (comprese serie rosse)
+df2 <- total_drive_length_green(df1)
+```
+
+Tempo totale passato in auto per data. I colori indicano il giorno della settimana. 
+Include esclusivamente il tempo considerato valido per l'analisi.
+
+```{r daily_length_full_green, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df2 %>%
+  ggplot(aes(date, total_drive_start/3600, fill=weekday_start))+
+  geom_col()+
+  scale_fill_brewer(palette = "Spectral")+
+  theme_light()+
+  xlab("")+
+  ylab("Total time spent driving by day (hours)")+
+  labs(fill="Day of the week:")
+
+rm(df1, df2)
+```
+##  Velocità media  
+
+In rosso, la velocità massima raggiunta in un giorno, in blu quella media. 
+La linea tratteggiata blu rappresenta la velocità media della flotta, quella tratteggiata rossa la media dei massimi raggiunti dai veicoli. 
+La linea intera blu rappresenta la velocità media del veicolo, quella rossa il massimo raggiunto dal veicolo. 
+
+```{r speed, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df3 <- df %>% 
+  filter(speed!=0)%>%
+  select(speed, time_ita)%>%
+  mutate(month=month(time_ita))%>%
+  mutate(day=day(time_ita))
+df3 <- df3 %>%
+  group_by(month, day)%>%
+  mutate(max_speed = max(speed), avg_speed = mean(speed))
+df3 <- df3 %>%
+  select(!speed)
+df3 <- base::unique(df3)
+avg_speeds <- read_csv("avg_speeds.csv")
+avg_speeds <- avg_speeds %>%
+  filter(vin=="we6L4O8OnRPcI")
+fleet_mean <- avg_speeds$avg_mean_vehicle
+avg_vehicle_max <- avg_speeds$avg_max_vehicle
+df3 %>%
+  ggplot(aes(time_ita))+
+  geom_line(aes(y=max_speed), colour = "red")+
+  geom_line(aes(y=avg_speed), colour = "blue")+
+  geom_hline(yintercept = fleet_mean, colour = "blue", linetype= "longdash")+
+  geom_hline(yintercept = avg_vehicle_max, colour = "red", linetype= "longdash")+
+  geom_hline(yintercept = df_speed$mean_speed, colour = "blue")+
+  geom_hline(yintercept = df_speed$max_speed, colour = "red")+
+  theme_light()+
+  xlab("date")+
+  ylab("speed")
+```
+
+##  Distanza geografica percorsa  
+```{r Map, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+rm(df3)
+worldmap <- getMap(resolution = "coarse")
+plot(worldmap, col = "lightgrey", 
+     fill = T, border = "darkgray",
+     xlim = c(-180, 180), ylim = c(-90, 90),
+     bg = "aliceblue",
+     asp = 1, wrap=c(-180,180))
+
+points(df$longitude, df$latitude, 
+       col = "red", cex = .01)
+
+```

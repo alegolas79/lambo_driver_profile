@@ -1,0 +1,275 @@
+---
+title: "clustering 07/12/21"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+library(tidyverse)
+library(factoextra)
+library(ggfortify)
+library(GGally)
+library(readxl)
+library(dbscan)
+library(fpc)
+
+data <- read_csv("confronto_km.csv")
+VIN_di_TEST <- read_excel("C:/Users/l.dorsa/Downloads/BIG DATA 11-29-2021/VIN di TEST.xlsx")
+VIN_di_TEST <- VIN_di_TEST %>% mutate(test = "test") %>% select(`VIN TEST`, test)
+
+colnames(VIN_di_TEST)[1] <- "vin"
+data <- data %>%
+  left_join(VIN_di_TEST)
+data <- data %>%
+  mutate(test = ifelse(is.na(test), "not test", test))
+
+rm(VIN_di_TEST)
+```
+
+
+```{r setup_clusters, include = FALSE}
+df <- data %>%
+  filter(test=="not test")%>%
+  select(c(perc_days, tot_days, overall_mean, avg_daily_max, mean_day_length_r_g, km_percorsi, vin))
+
+df <- df %>% filter(tot_days > 3) %>% select(!tot_days)
+
+df[is.na(df)] <- 0
+
+df <- df %>% mutate(id = 1:nrow(df))
+
+data_meta <- df %>%
+  select(vin, id)
+
+df_cluster <- df %>%
+  select(!c(vin)) %>%
+  column_to_rownames("id") %>% 
+  scale() 
+
+```
+
+```{r optimal clusters, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+fviz_nbclust(df_cluster, FUNcluster = kmeans, method = "wss")+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+
+```
+```{r optimal clusters2, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+fviz_nbclust(df_cluster, FUNcluster = kmeans, method = "silhouette")+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))
+
+```
+```{r optimal clusters3, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+fviz_nbclust(df_cluster, FUNcluster = kmeans, method = "gap_stat")+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+
+```
+
+
+## 4 Clusters
+```{r clusters, include = FALSE}
+set.seed(1234)
+km.res4 <- kmeans(df_cluster, 4, nstart = 25)
+clusters4 <- km.res4$cluster
+vin_clusters4 <- as.data.frame(table(clusters4, data_meta$vin))
+vin_clusters4 <- vin_clusters4 %>% filter(Freq==1)%>%select(!Freq)
+colnames(vin_clusters4)[2] <- "vin"
+vin_clusters4 <- vin_clusters4 %>% left_join(df)
+```
+
+```{r cluster_plot, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+autoplot(km.res4, df_cluster, frame = TRUE)
+
+
+```
+
+```{r variable_plot, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+vin_clusters4 <- vin_clusters4 %>%
+  mutate(mean_day_length_r_g = mean_day_length_r_g/3600)
+ggpairs(vin_clusters4[-c(1,2,8)], 
+  columnLabels = c("Percentage of days car was used", "Average speed", "Average daily maximum speed","Average time spent driving in a day", "Total kilometers travelled"), aes(color =vin_clusters4$clusters))+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))
+```
+
+```{r user_types4, fig.height=10, fig.width=12, echo=FALSE, message=FALSE, warning=FALSE}
+library(knitr)
+df1 <- data.frame(Cluster = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4"), Velocità_massima = c("Bassa", "Media", "Medio-alta", "Alta"), 
+     Velocità_media = c("Medio-bassa", "Alta", "Media", "Alta"),
+     Frequenza_utilizzo = c("Bassa", "Bassa", "Alta", "Medio-alta"), 
+     Durata_guida = c("Bassa", "Medio-bassa", "Medio-bassa", "Alta"),
+     Distanza_percorsa = c("Breve", "Medio-breve", "Medio-breve", "Lunga"))
+kable(df1)
+
+```
+## 5 Clusters
+
+
+```{r clusters5, include = FALSE}
+set.seed(1234)
+km.res5 <- kmeans(df_cluster, 5, nstart = 25)
+clusters5 <- km.res5$cluster
+vin_clusters5 <- as.data.frame(table(clusters5, data_meta$vin))
+vin_clusters5 <- vin_clusters5 %>% filter(Freq==1)%>%select(!Freq)
+colnames(vin_clusters5)[2] <- "vin"
+vin_clusters5 <- vin_clusters5 %>% left_join(df)
+```
+
+```{r cluster_plot5, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+autoplot(km.res5, df_cluster, frame = TRUE)+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+  
+
+
+```
+
+```{r clusters6, include = FALSE}
+set.seed(1235)
+km.res6 <- kmeans(df_cluster, 5, nstart = 50)
+clusters6 <- km.res6$cluster
+vin_clusters6 <- as.data.frame(table(clusters6, data_meta$vin))
+vin_clusters6 <- vin_clusters6 %>% filter(Freq==1)%>%select(!Freq)
+colnames(vin_clusters6)[2] <- "vin"
+vin_clusters6 <- vin_clusters6 %>% left_join(df)
+```
+
+```{r cluster_plot6, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+autoplot(km.res6, df_cluster, frame = TRUE)+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 14, face = "bold"),
+        strip.text.y = element_text(size = 14, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+  
+
+
+```
+```{r variable_plot5, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+vin_clusters5 <- vin_clusters5 %>%
+  mutate(mean_day_length_r_g = mean_day_length_r_g/3600)
+ggpairs(vin_clusters5[-c(1,2,8)], 
+  columnLabels = c("Percentage of days car was used", "Average speed", "Average daily maximum speed","Average time spent driving in a day (hours)", "Total kilometers travelled"), aes(color =vin_clusters5$clusters))+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 12, face = "bold"),
+        strip.text.y = element_text(size = 12, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+```
+
+```{r variable_avg_freq, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+vin_clusters5%>%
+  ggplot(aes(x=perc_days, y=avg_daily_max, color = clusters5))+
+  geom_jitter(size=5)+
+  xlab("Percentage of days car was used")+
+  ylab("Average daily maximum speed")+
+  labs(color = "Cluster")+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 12, face = "bold"),
+        strip.text.y = element_text(size = 12, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+```
+
+```{r variable_km_length, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+vin_clusters5%>%
+  ggplot(aes(x=mean_day_length_r_g, y=km_percorsi, color = clusters5))+
+  geom_jitter(size=5)+
+  xlab("Average time spent driving in a day (hours)")+
+  ylab("Total distance travelled (km)")+
+  labs(color = "Cluster")+
+  theme_light()+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=12),
+          axis.text.y = element_text(face="bold",
+                           size=12),
+        axis.title=element_text(size=12),
+        strip.text.x = element_text(size = 12, face = "bold"),
+        strip.text.y = element_text(size = 12, face = "bold"))+
+        theme(plot.background = element_rect(fill = "#EEEEEE"), legend.background =     element_rect(fill = "#EEEEEE"), legend.key = element_rect(fill = "#EEEEEE"))
+```
+
+```{r dataset,include=FALSE}
+#write_csv(vin_clusters5, "clusters.csv")
+```
+
+```{r user_types, fig.height=10, fig.width=12, echo=FALSE, message=FALSE, warning=FALSE}
+library(knitr)
+df1 <- data.frame(Cluster = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"), Velocità_massima = c("Bassa", "Media", "Media", "Alta", "Alta"), 
+     Velocità_media = c("Bassa", "Media", "Media", "Alta", "Medio-alta"),
+     Frequenza_utilizzo = c("Medio-bassa", "Medio-bassa", "Alta", "Medio-bassa", "Alta"), 
+     Durata_guida = c("Bassa", "Medio-bassa", "Media", "Medio-alta", "Alta"),
+     Distanza_percorsa = c("Breve", "Breve", "Media", "Media", "Lunga"))
+kable(df1)
+
+```
+
+```{r db_scan_epsilon, fig.height=10, fig.width=12, echo=FALSE, message=FALSE, warning=FALSE}
+#Determine epsilon
+dbscan::kNNdistplot(df_cluster, k =  10)
+
+```
+
+```{r db_scan, fig.height=10, fig.width=12, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(123)
+#epsilon = raggio, minpts = punti minimi per formare un cluster
+res.fpc <- fpc::dbscan(df_cluster, eps = 0.8, MinPts = 10)
+# dbscan package
+res.db <- dbscan::dbscan(df_cluster,0.4, 15)
+all(res.fpc$cluster == res.db$cluster)
+fviz_cluster(res.fpc, df_cluster, geom = "point")
+
+```
+
+```{r db_scan_graph, fig.height=10, fig.width=12, echo=FALSE, message=FALSE, warning=FALSE}
+df2 <- as.data.frame(table(res.db$cluster, data_meta$vin))
+df2 <- df2 %>% filter(Freq == 1)
+colnames(df2)[2] <- "vin"
+df2 <- df2 %>% left_join(df)
+ggpairs(df2[-c(1,2,3,9)], aes(color =df2$Var1))
+```

@@ -1,0 +1,186 @@
+---
+title: "User types"
+output:
+  html_document:
+    toc: true
+    theme: united
+---
+# Contenuti  
+  
+Analisi preliminare su:
+1. Media delle velocità massime giornaliere
+2. Massimo raggiunto
+3. Velocità media
+4. Media giornaliera del tempo passato in auto
+5. Percentuale di giorni in cui l'auto è stata usata rispetto alle date possibili a partire dalla prima osservazione
+   
+
+```{r setup, include = FALSE}
+library(tidyverse)
+library(readxl)
+data <- read_csv("confronto.csv")
+VIN_di_TEST <- read_excel("C:/Users/l.dorsa/Downloads/BIG DATA 11-29-2021/VIN di TEST.xlsx")
+VIN_di_TEST <- VIN_di_TEST %>% mutate(test = "test") %>% select(`VIN TEST`, test)
+
+colnames(VIN_di_TEST)[1] <- "vin"
+data <- data %>%
+  left_join(VIN_di_TEST)
+data <- data %>%
+  mutate(test = ifelse(is.na(test), "not test", test))
+```
+
+```{r setup_NA, include = FALSE}
+data <- data %>%
+  mutate(perc_days = ifelse(is.na(perc_days), 0, perc_days),
+         avg_daily_max = ifelse(is.na(avg_daily_max), 0, avg_daily_max),
+         overall_max = ifelse(is.na(overall_max), 0, overall_max),
+         overall_mean = ifelse(is.na(overall_mean), 0, overall_mean),
+         mean_day_length_r_g = ifelse(is.na(mean_day_length_r_g), 0, mean_day_length_r_g),
+         mean_day_length_g = ifelse(is.na(mean_day_length_g), 0, mean_day_length_g)
+         )
+```
+
+##  Media delle velocità massime giornaliere
+  
+```{r setup_avg_daily_max, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE} 
+
+data%>%
+  filter(test == "not test") %>%
+  ggplot(aes(avg_daily_max))+
+  geom_histogram(binwidth = 10)+
+  theme_light()+
+  ylab("")+
+  xlab("Average daily maximum speed (km/h)")+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=25),
+          axis.text.y = element_text(face="bold",
+                           size=25),
+        axis.title=element_text(size=25))
+```
+
+
+##  Velocità massima in termini assoluti
+  
+```{r setup_overall_max, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE} 
+data%>%
+  filter(test == "not test") %>%
+  ggplot(aes(overall_max))+
+  geom_histogram(binwidth = 10)+
+  theme_light()+
+  ylab("")+
+  xlab("Overall maximum speed (km/h)")+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=25),
+          axis.text.y = element_text(face="bold",
+                           size=25),
+        axis.title=element_text(size=25))
+```
+
+##  Velocità media
+   
+```{r setup_overall_mean, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE} 
+data%>%
+  filter(test == "not test") %>%
+  ggplot(aes(overall_mean))+
+  geom_histogram(binwidth = 10)+
+  theme_light()+
+  ylab("")+
+  xlab("Average speed (km/h)")+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=25),
+          axis.text.y = element_text(face="bold",
+                           size=25),
+        axis.title=element_text(size=25))
+```
+
+##  Media giornaliera del tempo passato in auto
+   
+```{r setup_mean_day_length_r_g, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE} 
+data%>%
+  filter(test == "not test") %>%
+  ggplot(aes(mean_day_length_r_g/3600))+
+  geom_histogram(binwidth = 0.16)+
+  theme_light()+
+  ylab("")+
+  xlab("Average time spent driving in a day (hours)")+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=25),
+          axis.text.y = element_text(face="bold",
+                           size=25),
+        axis.title=element_text(size=25))
+```
+
+Tutte le serie. 
+
+```{r setup_mean_day_length_g, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE} 
+data%>%
+  filter(test == "not test") %>%
+  ggplot(aes(mean_day_length_g/3600))+
+  geom_histogram(binwidth = 0.16)+
+  theme_light()+
+  ylab("")+
+  xlab("Average time spent driving in a day (hours)")+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=25),
+          axis.text.y = element_text(face="bold",
+                           size=25),
+        axis.title=element_text(size=25))
+```
+
+Solo serie valide.
+  
+##  Percentuale di giorni in cui l'auto è stata usata
+   
+```{r setup_perc_days, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE} 
+data%>%
+  filter(test == "not test") %>%
+  ggplot(aes(perc_days))+
+  geom_histogram(binwidth = 0.10)+
+  theme_light()+
+  ylab("")+
+  xlab("Percentage of days car was used")+ 
+  theme(axis.text.x = element_text(face="bold", 
+                           size=25),
+          axis.text.y = element_text(face="bold",
+                           size=25),
+        axis.title=element_text(size=25))
+```
+
+##  Relazioni tra variabili  
+```{r pairs, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE} 
+library(GGally)
+df <- data %>% 
+  filter(test!="test")%>%
+  select(avg_daily_max, overall_max, overall_mean, mean_day_length_r_g, perc_days) %>%
+  mutate(mean_day_length_r_g = mean_day_length_r_g/3600)
+ggpairs(df, 
+  columnLabels = c("Average daily maximum speed", "Maximum speed", "Average speed", "Average time spent driving in a day", "Percentage of days car was used"))+
+  theme_light()
+```
+
+```{r user_types, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+library(knitr)
+df <- data.frame(User_type = c("Uso limitato", "Città", "Gita", "Pilota professionista"), Velocità_massima = c("Zero", "Bassa", "Media", "Alta"), 
+                 Velocità_media = c("Zero", "Bassa", "Basso/media", "Alta"),
+                 Frequenza_utilizzo = c("Zero", "Limitata/frequente", "Limitata/frequente", "Frequente"), 
+                 Durata_guida = c("Zero", "Bassa", "Alta", "Medio/alta"))
+kable(df)
+
+```
+##  Analisi piloti professionisti
+```{r pairs_2, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE} 
+library(GGally)
+df <- data %>% 
+  filter(test!="test")%>%
+  select(avg_daily_max, overall_max, overall_mean, mean_day_length_r_g, perc_days) %>%
+  mutate(mean_day_length_r_g = mean_day_length_r_g/3600)%>%
+  mutate(pilota = ifelse(avg_daily_max >=200, "Fast", ifelse(avg_daily_max < 100, "Slow", "Average")))
+ggpairs(df[-6], 
+  columnLabels = c("Average daily maximum speed", "Maximum speed", "Average speed", "Average time spent driving in a day", "Percentage of days car was used"), aes(color =df$pilota))+
+  theme_light()
+```
+
+```{r setup_types}
+data <- data %>%
+  mutate(user_type = ifelse(perc_days == 0, "Uso limitato", NA))
+```
