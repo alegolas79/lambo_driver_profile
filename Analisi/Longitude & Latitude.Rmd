@@ -1,0 +1,54 @@
+---
+title: "Latitude&Longitude"
+output: html_notebook
+---
+
+
+```{r setup}
+library(tidyverse)
+library(lubridate)
+library(hms)
+library(rworldmap)
+library(data.table)
+library(lutz)
+df <- fread("weETUYWqZWYtU.csv", select = c("time","latitude","longitude","altitude","speed"))
+```
+
+```{r latitude 1, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  dplyr::filter(!is.na(df$latitude))%>%
+  mutate(day = day(time), month = month(time), hour = as_hms(time))%>%
+  dplyr::filter(month==6) %>%
+  dplyr::filter(day==20)%>%
+  ggplot(aes(x = hour, y = longitude))+
+  geom_line()+
+  facet_grid(vars(day))+
+  theme_light()
+```
+```{r setup_timezones, include=FALSE}
+#chiamare Timezones_functions 
+
+#initial_setup: filters NAs, orders by time and fills latitude and longitude so as to be able to convert all available dates and times
+#Filling lat and lon may cause some minor issues with time zones
+df <- initial_setup(df)
+
+#Find local timezone
+df$names <- tz_lookup_coords(df$latitude, df$longitude, method="fast")
+
+x<-split(df, df$names)
+#timezone_cet splits the dataset by location, sets timezones based on location and converts time to CET
+#MAX 15 TIMEZONES ATM
+df <- timezone_cet(df, names, x)
+```
+
+```{r latitude 2, fig.height=15, fig.width=25, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  dplyr::filter(!is.na(df$latitude))%>%
+  mutate(day = day(time_ita), month = month(time_ita), hour = as_hms(time_ita))%>%
+  dplyr::filter(month==6)%>%
+  dplyr::filter(day==20)%>%
+  ggplot(aes(x = hour, y = latitude))+
+  geom_line()+
+  facet_grid(vars(day))+
+  theme_light()
+```
